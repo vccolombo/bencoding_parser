@@ -21,6 +21,7 @@ pub mod bencoding_parser {
     #[derive(Debug, Clone)]
     pub enum BencodingValue {
         String(String),
+        Dict(HashMap<String, BencodingValue>),
     }
 
     pub struct Bencoding {
@@ -83,14 +84,18 @@ pub mod bencoding_parser {
         }
 
         fn decode_next(data: &[u8]) -> (BencodingValue, &[u8]) {
-            let (value, data) = match data[0] as char {
+            match data[0] as char {
                 'i' => todo!(), // integer
                 'l' => todo!(), // list
-                'd' => todo!(), // dict
-                _ => Self::decode_string(&data),
+                'd' => {
+                    let (value, data) = Self::decode_dict(&data);
+                    return (BencodingValue::Dict(value), data);
+                }
+                _ => {
+                    let (value, data) = Self::decode_string(&data);
+                    return (BencodingValue::String(value), data);
+                }
             };
-
-            return (BencodingValue::String(value), data);
         }
     }
 }
@@ -149,6 +154,23 @@ mod tests {
             _ => panic!(),
         };
         assert_eq!(result, "Víctor Colombo");
+    }
+
+    #[test]
+    fn decode_dict_inside_dict() {
+        let parser = Bencoding::decode(
+            "d6:author15:Víctor Colombo16:dict_inside_dictd3:key5:valueee".as_bytes(),
+        )
+        .unwrap();
+        let dict = match parser.get("dict_inside_dict").unwrap() {
+            BencodingValue::Dict(d) => d,
+            _ => panic!(),
+        };
+        let result = match &dict["key"] {
+            BencodingValue::String(s) => s,
+            _ => panic!(),
+        };
+        assert_eq!(result, "value");
     }
 
     #[test]
