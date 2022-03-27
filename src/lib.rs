@@ -21,6 +21,7 @@ pub mod bencoding_parser {
     #[derive(Debug, Clone)]
     pub enum BencodingValue {
         String(String),
+        Integer(i64),
         Dict(HashMap<String, BencodingValue>),
     }
 
@@ -83,9 +84,29 @@ pub mod bencoding_parser {
             return (value.to_owned(), data);
         }
 
+        fn decode_integer(mut data: &[u8]) -> (i64, &[u8]) {
+            // TODO: i-0e is invalid. All encodings with a leading zero, such as i03e, are
+            // invalid, other than i0e, which of course corresponds to the integer "0".
+            data = &data[1..];
+            let mut ending_idx = 0;
+            while data[ending_idx] != 'e' as u8 {
+                ending_idx = ending_idx + 1;
+            }
+
+            let value = std::str::from_utf8(&data[..ending_idx])
+                .unwrap()
+                .parse()
+                .unwrap();
+
+            return (value, &data[ending_idx + 1..]);
+        }
+
         fn decode_next(data: &[u8]) -> (BencodingValue, &[u8]) {
             match data[0] as char {
-                'i' => todo!(), // integer
+                'i' => {
+                    let (value, data) = Self::decode_integer(&data);
+                    return (BencodingValue::Integer(value), data);
+                }
                 'l' => todo!(), // list
                 'd' => {
                     let (value, data) = Self::decode_dict(&data);
@@ -154,6 +175,46 @@ mod tests {
             _ => panic!(),
         };
         assert_eq!(result, "Víctor Colombo");
+    }
+
+    #[test]
+    fn decode_one_digit_integer_5() {
+        let parser = Bencoding::decode("d7:integeri5ee".as_bytes()).unwrap();
+        let result = match parser.get("integer").unwrap() {
+            BencodingValue::Integer(i) => i,
+            _ => panic!(),
+        };
+        assert_eq!(result, 5);
+    }
+
+    #[test]
+    fn decode_one_digit_integer_6() {
+        let parser = Bencoding::decode("d7:integeri6ee".as_bytes()).unwrap();
+        let result = match parser.get("integer").unwrap() {
+            BencodingValue::Integer(i) => i,
+            _ => panic!(),
+        };
+        assert_eq!(result, 6);
+    }
+
+    #[test]
+    fn decode_two_digits_integer_42() {
+        let parser = Bencoding::decode("d7:integeri42ee".as_bytes()).unwrap();
+        let result = match parser.get("integer").unwrap() {
+            BencodingValue::Integer(i) => i,
+            _ => panic!(),
+        };
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn decode_three_digits_negative_integer_minus_18() {
+        let parser = Bencoding::decode("d7:integeri-18ee".as_bytes()).unwrap();
+        let result = match parser.get("integer").unwrap() {
+            BencodingValue::Integer(i) => i,
+            _ => panic!(),
+        };
+        assert_eq!(result, -18);
     }
 
     #[test]
