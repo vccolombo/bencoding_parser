@@ -23,6 +23,7 @@ pub mod bencoding_parser {
         String(String),
         Integer(i64),
         Dict(HashMap<String, BencodingValue>),
+        List(Vec<BencodingValue>),
     }
 
     pub struct Bencoding {
@@ -101,13 +102,34 @@ pub mod bencoding_parser {
             return (value, &data[ending_idx + 1..]);
         }
 
+        fn decode_list(mut data: &[u8]) -> (Vec<BencodingValue>, &[u8]) {
+            data = &data[1..];
+            let mut value;
+
+            let mut list: Vec<BencodingValue> = Vec::new();
+            loop {
+                // 0x65 ('e') indicates end of dictionary
+                if data[0] == 'e' as u8 {
+                    break;
+                }
+
+                (value, data) = Self::decode_next(data);
+                list.push(value);
+            }
+
+            return (list, data);
+        }
+
         fn decode_next(data: &[u8]) -> (BencodingValue, &[u8]) {
             match data[0] as char {
                 'i' => {
                     let (value, data) = Self::decode_integer(&data);
                     return (BencodingValue::Integer(value), data);
                 }
-                'l' => todo!(), // list
+                'l' => {
+                    let (value, data) = Self::decode_list(&data);
+                    return (BencodingValue::List(value), data);
+                }
                 'd' => {
                     let (value, data) = Self::decode_dict(&data);
                     return (BencodingValue::Dict(value), data);
@@ -232,6 +254,27 @@ mod tests {
             _ => panic!(),
         };
         assert_eq!(result, "value");
+    }
+
+    #[test]
+    fn decode_list_with_two_elements() {
+        let parser = Bencoding::decode("d4:listl5:elem1i42eee".as_bytes()).unwrap();
+        let bv = parser.get("list").unwrap();
+        let list = match bv {
+            BencodingValue::List(l) => l,
+            _ => panic!(),
+        };
+        let elem1 = match &list[0] {
+            BencodingValue::String(s) => s,
+            _ => panic!(),
+        };
+        let number = match list[1] {
+            BencodingValue::Integer(i) => i,
+            _ => panic!(),
+        };
+
+        assert_eq!(elem1, "elem1");
+        assert_eq!(number, 42);
     }
 
     #[test]
