@@ -1,20 +1,6 @@
 pub mod bencoding_parser {
     use std::collections::HashMap;
 
-    #[cfg(debug_assertions)]
-    macro_rules! debug {
-        ($x:expr) => {
-            dbg!($x)
-        };
-    }
-
-    #[cfg(not(debug_assertions))]
-    macro_rules! debug {
-        ($x:expr) => {
-            std::convert::identity($x)
-        };
-    }
-
     #[derive(Debug)]
     pub enum BencodingError {}
 
@@ -33,8 +19,6 @@ pub mod bencoding_parser {
     impl Bencoding {
         pub fn decode(data: &[u8]) -> Result<Self, BencodingError> {
             let (dict, _) = Self::decode_dict(data);
-
-            debug!(&dict);
 
             return Ok(Self { dict });
         }
