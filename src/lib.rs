@@ -6,14 +6,14 @@ pub mod bencoding_parser {
 
     #[derive(Debug, Clone)]
     pub enum BencodingValue {
-        String(String),
+        String(Vec<u8>),
         Integer(i64),
-        Dict(HashMap<String, BencodingValue>),
+        Dict(HashMap<Vec<u8>, BencodingValue>),
         List(Vec<BencodingValue>),
     }
 
     pub struct Bencoding {
-        dict: HashMap<String, BencodingValue>,
+        dict: HashMap<Vec<u8>, BencodingValue>,
     }
 
     impl Bencoding {
@@ -23,7 +23,7 @@ pub mod bencoding_parser {
             return Ok(Self { dict });
         }
 
-        pub fn get(&self, key: &str) -> Option<BencodingValue> {
+        pub fn get(&self, key: &[u8]) -> Option<BencodingValue> {
             if !self.dict.contains_key(key) {
                 return None;
             }
@@ -31,7 +31,7 @@ pub mod bencoding_parser {
             return Some(self.dict[key].clone());
         }
 
-        fn decode_dict(mut data: &[u8]) -> (HashMap<String, BencodingValue>, &[u8]) {
+        fn decode_dict(mut data: &[u8]) -> (HashMap<Vec<u8>, BencodingValue>, &[u8]) {
             data = &data[1..];
             let mut key;
             let mut value;
@@ -51,7 +51,7 @@ pub mod bencoding_parser {
             return (dict, data);
         }
 
-        fn decode_string(mut data: &[u8]) -> (String, &[u8]) {
+        fn decode_string(mut data: &[u8]) -> (Vec<u8>, &[u8]) {
             let mut separator_idx = 0;
 
             while data[separator_idx] != ':' as u8 {
@@ -63,10 +63,10 @@ pub mod bencoding_parser {
                 .parse()
                 .unwrap();
             data = &data[separator_idx + 1..];
-            let value = std::str::from_utf8(&data[..length]).unwrap();
+            let value = data[..length].to_vec();
             data = &data[length..];
 
-            return (value.to_owned(), data);
+            return (value, data);
         }
 
         fn decode_integer(mut data: &[u8]) -> (i64, &[u8]) {
@@ -134,59 +134,69 @@ mod tests {
     #[test]
     fn decode_string_key_hello_value_world() {
         let parser = Bencoding::decode(b"d5:hello5:worlde").unwrap();
-        let result = match parser.get("hello").unwrap() {
+        let result = match parser.get(b"hello").unwrap() {
             BencodingValue::String(s) => s,
             _ => panic!(),
         };
-        assert_eq!(result, "world");
+        assert_eq!(result, b"world");
     }
 
     #[test]
     fn decode_string_key_key_value_value() {
         let parser = Bencoding::decode(b"d3:key5:valuee").unwrap();
-        let result = match parser.get("key").unwrap() {
+        let result = match parser.get(b"key").unwrap() {
             BencodingValue::String(s) => s,
             _ => panic!(),
         };
-        assert_eq!(result, "value");
+        assert_eq!(result, b"value");
     }
 
     #[test]
     fn decode_string_utf8() {
         let parser = Bencoding::decode("d6:author15:Víctor Colomboe".as_bytes()).unwrap();
-        let result = match parser.get("author").unwrap() {
+        let result = match parser.get(b"author").unwrap() {
             BencodingValue::String(s) => s,
             _ => panic!(),
         };
-        assert_eq!(result, "Víctor Colombo");
+        assert_eq!(result, "Víctor Colombo".as_bytes());
     }
 
     #[test]
     fn decode_multiple_strings_first() {
         let parser =
             Bencoding::decode("d3:key5:value6:author15:Víctor Colomboe".as_bytes()).unwrap();
-        let result = match parser.get("key").unwrap() {
+        let result = match parser.get(b"key").unwrap() {
             BencodingValue::String(s) => s,
             _ => panic!(),
         };
-        assert_eq!(result, "value");
+        assert_eq!(result, b"value");
     }
 
     #[test]
     fn decode_multiple_strings_second() {
         let parser =
             Bencoding::decode("d3:key5:value6:author15:Víctor Colomboe".as_bytes()).unwrap();
-        let result = match parser.get("author").unwrap() {
+        let result = match parser.get(b"author").unwrap() {
             BencodingValue::String(s) => s,
             _ => panic!(),
         };
-        assert_eq!(result, "Víctor Colombo");
+        assert_eq!(result, "Víctor Colombo".as_bytes());
+    }
+
+    #[test]
+    fn decode_non_utf8_string() {
+        let parser = Bencoding::decode(b"d3:key5:\xAB\xA3\xDA\x89\xFCe").unwrap();
+        let result = match parser.get(b"key").unwrap() {
+            BencodingValue::String(s) => s,
+            _ => panic!(),
+        };
+        assert_eq!(result, b"\xAB\xA3\xDA\x89\xFC");
     }
 
     #[test]
     fn decode_one_digit_integer_5() {
         let parser = Bencoding::decode("d7:integeri5ee".as_bytes()).unwrap();
-        let result = match parser.get("integer").unwrap() {
+        let result = match parser.get(b"integer").unwrap() {
             BencodingValue::Integer(i) => i,
             _ => panic!(),
         };
@@ -196,7 +206,7 @@ mod tests {
     #[test]
     fn decode_one_digit_integer_6() {
         let parser = Bencoding::decode("d7:integeri6ee".as_bytes()).unwrap();
-        let result = match parser.get("integer").unwrap() {
+        let result = match parser.get(b"integer").unwrap() {
             BencodingValue::Integer(i) => i,
             _ => panic!(),
         };
@@ -206,7 +216,7 @@ mod tests {
     #[test]
     fn decode_two_digits_integer_42() {
         let parser = Bencoding::decode("d7:integeri42ee".as_bytes()).unwrap();
-        let result = match parser.get("integer").unwrap() {
+        let result = match parser.get(b"integer").unwrap() {
             BencodingValue::Integer(i) => i,
             _ => panic!(),
         };
@@ -216,7 +226,7 @@ mod tests {
     #[test]
     fn decode_three_digits_negative_integer_minus_18() {
         let parser = Bencoding::decode("d7:integeri-18ee".as_bytes()).unwrap();
-        let result = match parser.get("integer").unwrap() {
+        let result = match parser.get(b"integer").unwrap() {
             BencodingValue::Integer(i) => i,
             _ => panic!(),
         };
@@ -229,21 +239,21 @@ mod tests {
             "d6:author15:Víctor Colombo16:dict_inside_dictd3:key5:valueee".as_bytes(),
         )
         .unwrap();
-        let dict = match parser.get("dict_inside_dict").unwrap() {
+        let dict = match parser.get(b"dict_inside_dict").unwrap() {
             BencodingValue::Dict(d) => d,
             _ => panic!(),
         };
-        let result = match &dict["key"] {
+        let result = match &dict[&b"key".to_vec()] {
             BencodingValue::String(s) => s,
             _ => panic!(),
         };
-        assert_eq!(result, "value");
+        assert_eq!(result, b"value");
     }
 
     #[test]
     fn decode_list_with_two_elements() {
         let parser = Bencoding::decode("d4:listl5:elem1i42eee".as_bytes()).unwrap();
-        let bv = parser.get("list").unwrap();
+        let bv = parser.get(b"list").unwrap();
         let list = match bv {
             BencodingValue::List(l) => l,
             _ => panic!(),
@@ -257,7 +267,7 @@ mod tests {
             _ => panic!(),
         };
 
-        assert_eq!(elem1, "elem1");
+        assert_eq!(elem1, b"elem1");
         assert_eq!(number, 42);
     }
 
@@ -269,7 +279,7 @@ mod tests {
     #[test]
     fn get_key_that_does_not_exist_must_return_none() {
         let parser = Bencoding::decode(b"de").unwrap();
-        let result = parser.get("fake");
+        let result = parser.get(b"fake");
         assert!(result.is_none());
     }
 }
